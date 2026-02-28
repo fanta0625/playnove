@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/gen-api-list.sh)",
+      "Bash(./scripts/list-modules.sh)",
+      "Bash(git init)"
+    ]
+  }
+}

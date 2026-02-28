@@ -1,0 +1,372 @@
+// Prisma Schema for PlayNova
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(USER)
+  emailVerified Boolean   @default(false)
+  avatar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // 关联
+  children      Child[]
+  playRecords   PlayRecord[]
+  subscriptions Subscription[]
+  createdGroups  Group[]             @relation("GroupCreator")
+  groupMemberships GroupMember[]     @relation("GroupMemberships")
+  groupTasks    GroupTask[]          @relation("GroupTasks")
+  taskSubmissions TaskSubmission[]   @relation("TaskSubmissions")
+
+  @@index([email])
+  @@map("users")
+}
+
+// 用户角色枚举（全局权限）
+enum Role {
+  USER
+  PARENT
+  SUPER_ADMIN
+}
+
+// 儿童账户表（关联家长账户）
+model Child {
+  id          String   @id @default(cuid())
+  parentId    String
+  name        String
+  age         Int
+  avatar      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  parent      User     @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  playRecords PlayRecord[]
+
+  @@index([parentId])
+  @@map("children")
+}
+
+// 游戏表
+model Game {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  icon        String
+  category    GameCategory
+  isActive    Boolean  @default(true)
+  difficulty  GameDifficulty @default(EASY)
+  minAge      Int
+  maxAge      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  levels      Level[]
+  playRecords PlayRecord[]
+
+  @@index([category, isActive])
+  @@map("games")
+}
+
+// 游戏类别枚举
+enum GameCategory {
+  DRAG
+  MATCH
+  COUNT
+  PUZZLE
+  SORT
+}
+
+// 游戏难度枚举
+enum GameDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+// 关卡表
+model Level {
+  id          String    @id @default(cuid())
+  gameId      String
+  levelNumber Int
+  title       String
+  description String?
+  difficulty  GameDifficulty @default(EASY)
+  minScore    Int       @default(60)
+  timeLimit   Int?      // 毫秒
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联
+  game        Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  playRecords PlayRecord[]
+
+  @@unique([gameId, levelNumber])
+  @@index([gameId, isActive])
+  @@map("levels")
+}
+
+// 题库表
+model Question {
+  id          String   @id @default(cuid())
+  levelId     String
+  type        String   // 题目类型：drag, match, count等
+  content     Json     // 题目内容（JSON格式）
+  answer      Json     // 答案（JSON格式）
+  score       Int      @default(10)
+  timeLimit   Int?     // 题目时间限制（毫秒）
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  level       Level    @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@index([levelId, sortOrder])
+  @@map("questions")
+}
+
+// 游戏记录表
+model PlayRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  childId     String?
+  gameId      String
+  levelId     String
+  score       Int
+  maxScore    Int
+  completed   Boolean
+  duration    Int      // 游戏时长（毫秒）
+  correctCount Int     @default(0)
+  wrongCount  Int     @default(0)
+  createdAt   DateTime @default(now())
+
+  // 关联
+  user        User     @relation(fields: [userId], references: [id])
+  child       Child?   @relation(fields: [childId], references: [id])
+  game        Game     @relation(fields: [gameId], references: [id])
+  level       Level    @relation(fields: [levelId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([childId, createdAt])
+  @@index([gameId, levelId])
+  @@map("play_records")
+}
+
+// 订阅表（预留）
+model Subscription {
+  id          String           @id @default(cuid())
+  userId      String
+  plan        SubscriptionPlan @default(FREE)
+  status      SubscriptionStatus @default(ACTIVE)
+  startDate   DateTime         @default(now())
+  endDate     DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // 关联
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+// 订阅计划枚举
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PREMIUM
+}
+
+// 订阅状态枚举
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// AI分析报告表（预留）
+model AiReport {
+  id          String   @id @default(cuid())
+  userId      String
+  childId     String?
+  reportType  String
+  content     Json     // 分析内容（JSON格式）
+  insights    Json?    // 洞察和建议（JSON格式）
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([childId, createdAt])
+  @@map("ai_reports")
+}
+
+// 刷新令牌表（用于JWT刷新）
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// 审计日志表
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// 群组表（通用的群组系统：班级、家庭、兴趣小组等）
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        GroupType @default(OTHER)
+  creatorId   String
+  maxMembers  Int      @default(100)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  creator     User         @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  tasks       GroupTask[]
+
+  @@index([creatorId])
+  @@index([type, isActive])
+  @@map("groups")
+}
+
+// 群组类型枚举
+enum GroupType {
+  CLASS      // 班级
+  FAMILY     // 家庭
+  INTEREST   // 兴趣小组
+  TRAINING   // 培训班
+  OTHER      // 其他
+}
+
+// 群组成员表（记录用户在群组中的角色）
+model GroupMember {
+  id        String      @id @default(cuid())
+  groupId   String
+  userId    String
+  role      String      // 自定义角色：班主任、数学老师、妈妈、爸爸、学生等
+  canInvite Boolean     @default(false) // 是否可以邀请他人
+  canAssign Boolean     @default(false) // 是否可以分配角色
+  joinedAt  DateTime    @default(now())
+
+  // 关联
+  group     Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User        @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+// 群组邀请码表
+model GroupInvitation {
+  id           String   @id @default(cuid())
+  groupId      String
+  invitedById  String
+  code         String   @unique
+  maxUses      Int      @default(10)
+  usedCount    Int      @default(0)
+  expiresAt    DateTime?
+  isActive     Boolean  @default(true)
+  defaultRole  String?  // 加入后的默认角色
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([code])
+  @@map("group_invitations")
+}
+
+// 群组任务表（作业、任务、活动等）
+model GroupTask {
+  id           String    @id @default(cuid())
+  groupId      String
+  createdById  String
+  title        String
+  description  String?
+  type         TaskType  @default(HOMEWORK)
+  gameId       String?
+  levelId      String?
+  dueDate      DateTime?
+  isPublished  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // 关联
+  group        Group             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy    User              @relation("GroupTasks", fields: [createdById], references: [id], onDelete: Cascade)
+  submissions  TaskSubmission[]
+
+  @@index([groupId])
+  @@index([createdById])
+  @@index([isPublished])
+  @@map("group_tasks")
+}
+
+// 任务类型枚举
+enum TaskType {
+  HOMEWORK    // 作业
+  ACTIVITY    // 活动
+  CHALLENGE   // 挑战
+  EXERCISE    // 练习
+  OTHER       // 其他
+}
+
+// 任务提交表
+model TaskSubmission {
+  id          String   @id @default(cuid())
+  taskId      String
+  userId      String
+  score       Int?
+  maxScore    Int?
+  completed   Boolean  @default(false)
+  submittedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  task        GroupTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User      @relation("TaskSubmissions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+  @@map("task_submissions")
+}

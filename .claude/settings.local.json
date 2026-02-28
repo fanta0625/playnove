@@ -3,7 +3,14 @@
     "allow": [
       "Bash(./scripts/gen-api-list.sh)",
       "Bash(./scripts/list-modules.sh)",
-      "Bash(git init)"
+      "Bash(git init)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\wangxin && git -C /home/wangxin/projects/playnove config --global http.sslVerify false\")",
+      "Bash(GIT_CURL_VERBOSE=1 git push -u origin main --force)",
+      "Bash(git remote set-url origin https://YOUR_TOKEN@github.com/fanta0625/playnove.git)",
+      "Bash(git remote set-url origin https://github.com/fanta0625/playnove.git)",
+      "Bash(git remote get-url origin)",
+      "Bash(xargs cat)",
+      "Bash(git add .context/ .claude/ .cursorrules .gitignore)"
     ]
   }
 }

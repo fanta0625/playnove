@@ -1,16 +1,155 @@
-## AI 辅助开发规则
+## PlayNova AI 辅助开发规则
+
+### 项目信息
+- **名称**: PlayNova (启玩星球)
+- **类型**: 儿童教育游戏平台 (3-6岁)
+- **技术栈**: React 18 + NestJS + Prisma + PostgreSQL
+- **阶段**: MVP Phase 5-6
+
+---
+
+## 🎯 工作流程
 
 在编写代码前，你必须：
-1. 使用 @codebase 搜索相关功能是否已存在
-2. 使用 @Symbols 查看类型定义
-3. 阅读现有代码保持风格一致
-4. 参考 .context/ 下的文档
+1. ✅ 使用 `@codebase` 搜索相关功能是否已存在
+2. ✅ 使用 `@Symbols` 查看类型定义
+3. ✅ 阅读现有代码保持风格一致
+4. ✅ 参考 `.context/` 下的文档
+5. ✅ 检查 `backend/prisma/schema.prisma` 了解数据模型
 
-## 禁止行为
+---
+
+## ❌ 严格禁止
+
+### 功能禁止（MVP 阶段不要实现）
+- 订阅付费系统
+- AI 分析功能
+- WebSocket 实时通信
+- 邮件服务
+- 微信登录（UI 已预留，但后端待实现）
+- 复杂动画系统（用 CSS 动画）
+- 音频系统（用 HTML5 Audio）
+- 成就系统
+- 排行榜
+- 多语言支持
+- 主题切换
+- 离线功能
+- 数据导出
+- ELK 日志聚合
+- 负载均衡
+
+### 行为禁止
 - ❌ 不要重复生成已有的功能
 - ❌ 不要假设数据结构，先查文档
 - ❌ 不要改变现有代码风格
+- ❌ 不要使用 `user.userId`，统一用 `user.id`
+- ❌ 不要绕过 Child 账户权限检查
+- ❌ 不要在日志中记录密码
+- ❌ 不要在响应中返回密码字段
 
-## 工作流程
-用户说需求 → @codebase 搜索 → 参考现有代码 → 生成新代码
+---
 
+## ✅ 必须遵守
+
+### 安全规范
+1. **所有 API 默认需要认证**
+   - 使用 `@UseGuards(JwtAuthGuard)` 保护路由
+   - 使用 `@Public()` 标记公开路由
+
+2. **统一用户标识**
+   - 始终使用 `user.id`（不是 `user.userId`）
+   - JWT Strategy 必须正确设置 `user.id`
+
+3. **Child 账户权限隔离**
+   - 必须验证 `child.parentId === user.id`
+   - 不允许访问其他人的 Child 账户
+
+4. **输入验证**
+   - 所有 DTO 使用 class-validator
+   - 使用 `@IsNotEmpty()`, `@IsEmail()` 等
+
+### 权限检查规范
+- **Guard 层**: 路由级别权限检查
+- **Service 层**: 业务逻辑权限检查
+- **Controller 层**: 使用装饰器声明权限要求
+
+### 代码规范
+- TypeScript 严格模式
+- ESLint 无警告
+- 统一的错误处理
+- 统一的 API 响应格式
+
+---
+
+## 🔐 权限系统使用
+
+### Guards 顺序
+```typescript
+// 基础认证
+@UseGuards(JwtAuthGuard)
+
+// 角色检查
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN')
+
+// 群组权限
+@UseGuards(JwtAuthGuard, GroupMemberGuard)
+@UseGuards(JwtAuthGuard, GroupCreatorGuard)
+@UseGuards(JwtAuthGuard, GroupAdminGuard)
+```
+
+### 群组权限
+- **角色**: 自定义字符串（"班主任"、"爸爸"）
+- **权限**: `canInvite`、`canAssign`
+- **成员验证**: `GroupMemberGuard`
+- **创建者验证**: `GroupCreatorGuard`
+- **管理权限**: `GroupAdminGuard`
+
+---
+
+## 📁 关键文档
+
+必读文档（按优先级）：
+1. `.context/SUMMARY.md` - 项目摘要和已有模块
+2. `.context/STACK.md` - 技术规范和代码风格
+3. `backend/prisma/schema.prisma` - 数据模型
+4. `FEATURES.md` - 功能模块详解
+5. `MVP-GUIDE.md` - MVP 开发约束
+6. `PERMISSION-AUDIT-REPORT.md` - 安全审查
+
+---
+
+## 🛠️ 快速搜索
+
+```bash
+# 搜索 API
+grep -r '@Get\|@Post' backend/src --include='*.ts'
+
+# 搜索模块
+find backend/src/modules -name '*.ts'
+
+# 查看数据模型
+cat backend/prisma/schema.prisma
+```
+
+---
+
+## 💬 对话示例
+
+**我：** 实现用户头像上传功能
+**你：**
+1. `@codebase upload` 搜索上传相关代码
+2. `@Symbols User` 查看 User 模型
+3. 参考 `.context/STACK.md` 的代码风格
+4. 确认不存在后实现
+
+**我：** 添加群组邀请功能
+**你：**
+1. `@codebase invitation` 搜索邀请码相关
+2. `@GroupsController` 查看群组模块
+3. 参考 `FEATURES.md` 的群组系统设计
+4. 按现有风格添加新接口
+
+---
+
+**记住：用户说需求 → @codebase 搜索 → 参考现有代码 → 生成新代码**

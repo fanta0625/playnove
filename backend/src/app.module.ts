@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { GamesModule } from './modules/games/games.module';
 import { GroupsModule } from './modules/groups/groups.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { HealthController } from './common/health/health.controller';
 
 @Module({
@@ -61,6 +62,7 @@ import { HealthController } from './common/health/health.controller';
         UsersModule,
         GamesModule,
         GroupsModule,
+        RolesModule,
     ],
     controllers: [HealthController],
     providers: [],

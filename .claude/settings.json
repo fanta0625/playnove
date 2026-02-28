@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(git push origin main)",
+      "Bash(npx prisma migrate dev --name user_system_and_permission_refactor)",
+      "Bash(npx prisma generate)"
     ]
   }
 }

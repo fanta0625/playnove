@@ -9,26 +9,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// 用户系统
+// ============================================
+
 // 用户表
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String
-  name          String
-  role          Role      @default(USER)
-  emailVerified Boolean   @default(false)
-  avatar        String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String          @id @default(cuid())
+  email           String          @unique
+  password        String
+  name            String
+  role            Role            @default(USER)
+  emailVerified   Boolean         @default(false)
+  avatar          String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   // 关联
-  children      Child[]
-  playRecords   PlayRecord[]
-  subscriptions Subscription[]
-  createdGroups  Group[]             @relation("GroupCreator")
-  groupMemberships GroupMember[]     @relation("GroupMemberships")
-  groupTasks    GroupTask[]          @relation("GroupTasks")
-  taskSubmissions TaskSubmission[]   @relation("TaskSubmissions")
+  memberProfiles  MemberProfile[]
+  playRecords     PlayRecord[]
+  subscriptions   Subscription[]
+  createdGroups   Group[]          @relation("GroupCreator")
+  groupMemberships GroupMember[]   @relation("GroupMemberships")
+  groupTasks      GroupTask[]      @relation("GroupTasks")
+  taskSubmissions TaskSubmission[] @relation("TaskSubmissions")
 
   @@index([email])
   @@map("users")
@@ -41,210 +45,40 @@ enum Role {
   SUPER_ADMIN
 }
 
-// 儿童账户表（关联家长账户）
-model Child {
-  id          String   @id @default(cuid())
+// 成员档案表（原 children 表重命名）
+model MemberProfile {
+  id          String       @id @default(cuid())
   parentId    String
   name        String
-  age         Int
+  age         Int?
   avatar      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  memberType  MemberType   @default(STUDENT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   // 关联
-  parent      User     @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parent      User         @relation(fields: [parentId], references: [id], onDelete: Cascade)
   playRecords PlayRecord[]
 
   @@index([parentId])
-  @@map("children")
+  @@index([memberType])
+  @@map("member_profiles")
 }
 
-// 游戏表
-model Game {
-  id          String   @id @default(cuid())
-  name        String
-  description String
-  icon        String
-  category    GameCategory
-  isActive    Boolean  @default(true)
-  difficulty  GameDifficulty @default(EASY)
-  minAge      Int
-  maxAge      Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  levels      Level[]
-  playRecords PlayRecord[]
-
-  @@index([category, isActive])
-  @@map("games")
+// 成员类型枚举
+enum MemberType {
+  STUDENT    // 学生
+  CHILD      // 孩子
+  EMPLOYEE   // 员工
+  PATIENT    // 病人
+  OTHER      // 其他
 }
 
-// 游戏类别枚举
-enum GameCategory {
-  DRAG
-  MATCH
-  COUNT
-  PUZZLE
-  SORT
-}
+// ============================================
+// 群组系统
+// ============================================
 
-// 游戏难度枚举
-enum GameDifficulty {
-  EASY
-  MEDIUM
-  HARD
-}
-
-// 关卡表
-model Level {
-  id          String    @id @default(cuid())
-  gameId      String
-  levelNumber Int
-  title       String
-  description String?
-  difficulty  GameDifficulty @default(EASY)
-  minScore    Int       @default(60)
-  timeLimit   Int?      // 毫秒
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  // 关联
-  game        Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  questions   Question[]
-  playRecords PlayRecord[]
-
-  @@unique([gameId, levelNumber])
-  @@index([gameId, isActive])
-  @@map("levels")
-}
-
-// 题库表
-model Question {
-  id          String   @id @default(cuid())
-  levelId     String
-  type        String   // 题目类型：drag, match, count等
-  content     Json     // 题目内容（JSON格式）
-  answer      Json     // 答案（JSON格式）
-  score       Int      @default(10)
-  timeLimit   Int?     // 题目时间限制（毫秒）
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // 关联
-  level       Level    @relation(fields: [levelId], references: [id], onDelete: Cascade)
-
-  @@index([levelId, sortOrder])
-  @@map("questions")
-}
-
-// 游戏记录表
-model PlayRecord {
-  id          String   @id @default(cuid())
-  userId      String
-  childId     String?
-  gameId      String
-  levelId     String
-  score       Int
-  maxScore    Int
-  completed   Boolean
-  duration    Int      // 游戏时长（毫秒）
-  correctCount Int     @default(0)
-  wrongCount  Int     @default(0)
-  createdAt   DateTime @default(now())
-
-  // 关联
-  user        User     @relation(fields: [userId], references: [id])
-  child       Child?   @relation(fields: [childId], references: [id])
-  game        Game     @relation(fields: [gameId], references: [id])
-  level       Level    @relation(fields: [levelId], references: [id])
-
-  @@index([userId, createdAt])
-  @@index([childId, createdAt])
-  @@index([gameId, levelId])
-  @@map("play_records")
-}
-
-// 订阅表（预留）
-model Subscription {
-  id          String           @id @default(cuid())
-  userId      String
-  plan        SubscriptionPlan @default(FREE)
-  status      SubscriptionStatus @default(ACTIVE)
-  startDate   DateTime         @default(now())
-  endDate     DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-
-  // 关联
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, status])
-  @@map("subscriptions")
-}
-
-// 订阅计划枚举
-enum SubscriptionPlan {
-  FREE
-  BASIC
-  PREMIUM
-}
-
-// 订阅状态枚举
-enum SubscriptionStatus {
-  ACTIVE
-  EXPIRED
-  CANCELLED
-}
-
-// AI分析报告表（预留）
-model AiReport {
-  id          String   @id @default(cuid())
-  userId      String
-  childId     String?
-  reportType  String
-  content     Json     // 分析内容（JSON格式）
-  insights    Json?    // 洞察和建议（JSON格式）
-  createdAt   DateTime @default(now())
-
-  @@index([userId, createdAt])
-  @@index([childId, createdAt])
-  @@map("ai_reports")
-}
-
-// 刷新令牌表（用于JWT刷新）
-model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-  @@map("refresh_tokens")
-}
-
-// 审计日志表
-model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  action    String
-  entity    String?
-  entityId  String?
-  metadata  Json?
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-
-  @@index([userId, createdAt])
-  @@index([action, createdAt])
-  @@map("audit_logs")
-}
-
-// 群组表（通用的群组系统：班级、家庭、兴趣小组等）
+// 群组表
 model Group {
   id          String   @id @default(cuid())
   name        String
@@ -260,6 +94,7 @@ model Group {
   creator     User         @relation("GroupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
   members     GroupMember[]
   tasks       GroupTask[]
+  roles       RoleTemplate[]
 
   @@index([creatorId])
   @@index([type, isActive])
@@ -275,19 +110,104 @@ enum GroupType {
   OTHER      // 其他
 }
 
-// 群组成员表（记录用户在群组中的角色）
-model GroupMember {
-  id        String      @id @default(cuid())
-  groupId   String
-  userId    String
-  role      String      // 自定义角色：班主任、数学老师、妈妈、爸爸、学生等
-  canInvite Boolean     @default(false) // 是否可以邀请他人
-  canAssign Boolean     @default(false) // 是否可以分配角色
-  joinedAt  DateTime    @default(now())
+// 角色模板表
+model RoleTemplate {
+  id          String           @id @default(cuid())
+  name        String           // 角色名称：班主任、数学老师、妈妈、爸爸、学生等
+  description String?
+  level       Int              @default(0) // 层级：0最高，数字越大级别越低
+  groupId     String?          // null=全局模板，有值=群组自定义角色
+  isSystem    Boolean          @default(false) // 是否是系统预定义角色
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   // 关联
-  group     Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User        @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  group       Group?           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  members     GroupMember[]
+  canAppoint  RoleAppointment[] @relation("CanAppoint")
+  canBeAppointedBy RoleAppointment[] @relation("CanBeAppointedBy")
+
+  @@unique([groupId, name])
+  @@index([groupId, isActive])
+  @@map("role_templates")
+}
+
+// 权限枚举
+enum Permission {
+  // 群组管理
+  MANAGE_GROUP
+  INVITE_MEMBERS
+  REMOVE_MEMBERS
+
+  // 角色任命
+  APPOINT_ROLE
+  CREATE_ROLE
+  DELEGATE_APPOINTMENT  // 传递任命权
+
+  // 任务管理
+  CREATE_TASKS
+  ASSIGN_TASKS
+  REVIEW_TASKS
+
+  // 成员管理
+  VIEW_ALL_MEMBERS
+  EDIT_MEMBER_INFO
+
+  // 数据查看
+  VIEW_STATS
+  VIEW_REPORTS
+
+  // 游戏相关
+  MANAGE_GAMES
+  VIEW_GAME_RECORDS
+}
+
+// 角色权限表
+model RolePermission {
+  id             String       @id @default(cuid())
+  roleTemplateId String
+  permission     Permission
+  createdAt      DateTime     @default(now())
+
+  // 关联
+  roleTemplate   RoleTemplate @relation(fields: [roleTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([roleTemplateId, permission])
+  @@index([roleTemplateId])
+  @@map("role_permissions")
+}
+
+// 角色任命关系表（支持权限传递）
+model RoleAppointment {
+  id          String       @id @default(cuid())
+  fromRoleId  String       // 任命者角色ID
+  toRoleId    String       // 被任命者角色ID
+  canDelegate Boolean      @default(false) // ⭐ 被任命者是否可以继续任命下级
+  createdAt   DateTime     @default(now())
+
+  // 关联
+  fromRole    RoleTemplate @relation("CanAppoint", fields: [fromRoleId], references: [id], onDelete: Cascade)
+  toRole      RoleTemplate @relation("CanBeAppointedBy", fields: [toRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([fromRoleId, toRoleId])
+  @@map("role_appointments")
+}
+
+// 群组成员表
+model GroupMember {
+  id             String       @id @default(cuid())
+  groupId        String
+  userId         String
+  roleTemplateId String       // 关联角色模板
+  canDelegate    Boolean      @default(false) // ⭐ 该成员是否有传递任命权（从 RoleAppointment 继承）
+  joinedAt       DateTime     @default(now())
+
+  // 关联
+  group          Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user           User         @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  roleTemplate   RoleTemplate @relation(fields: [roleTemplateId], references: [id])
 
   @@unique([groupId, userId])
   @@index([groupId])
@@ -314,7 +234,7 @@ model GroupInvitation {
   @@map("group_invitations")
 }
 
-// 群组任务表（作业、任务、活动等）
+// 群组任务表
 model GroupTask {
   id           String    @id @default(cuid())
   groupId      String
@@ -369,4 +289,197 @@ model TaskSubmission {
   @@index([taskId])
   @@index([userId])
   @@map("task_submissions")
+}
+
+// ============================================
+// 游戏系统
+// ============================================
+
+// 游戏表
+model Game {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  icon        String
+  category    GameCategory
+  isActive    Boolean  @default(true)
+  difficulty  GameDifficulty @default(EASY)
+  minAge      Int
+  maxAge      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  levels      Level[]
+  playRecords PlayRecord[]
+
+  @@index([category, isActive])
+  @@map("games")
+}
+
+// 游戏类别枚举
+enum GameCategory {
+  DRAG
+  MATCH
+  COUNT
+  PUZZLE
+  SORT
+}
+
+// 游戏难度枚举
+enum GameDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+// 关卡表
+model Level {
+  id          String    @id @default(cuid())
+  gameId      String
+  levelNumber Int
+  title       String
+  description String?
+  difficulty  GameDifficulty @default(EASY)
+  minScore    Int       @default(60)
+  timeLimit   Int?      // 毫秒
+  isActive    Boolean   @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  game        Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  playRecords PlayRecord[]
+
+  @@unique([gameId, levelNumber])
+  @@index([gameId, isActive])
+  @@map("levels")
+}
+
+// 题库表
+model Question {
+  id          String   @id @default(cuid())
+  levelId     String
+  type        String   // 题目类型：drag, match, count等
+  content     Json     // 题目内容（JSON格式）
+  answer      Json     // 答案（JSON格式）
+  score       Int      @default(10)
+  timeLimit   Int?     // 题目时间限制（毫秒）
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  level       Level    @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@index([levelId, sortOrder])
+  @@map("questions")
+}
+
+// 游戏记录表
+model PlayRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  profileId   String?  // ⭐ 原 childId 改名
+  gameId      String
+  levelId     String
+  score       Int
+  maxScore    Int
+  completed   Boolean
+  duration    Int      // 游戏时长（毫秒）
+  correctCount Int     @default(0)
+  wrongCount  Int     @default(0)
+  createdAt   DateTime @default(now())
+
+  // 关联
+  user        User          @relation(fields: [userId], references: [id])
+  profile     MemberProfile? @relation(fields: [profileId], references: [id])
+  game        Game          @relation(fields: [gameId], references: [id])
+  level       Level         @relation(fields: [levelId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([profileId, createdAt])
+  @@index([gameId, levelId])
+  @@map("play_records")
+}
+
+// ============================================
+// 其他系统
+// ============================================
+
+// 订阅表（预留）
+model Subscription {
+  id          String           @id @default(cuid())
+  userId      String
+  plan        SubscriptionPlan @default(FREE)
+  status      SubscriptionStatus @default(ACTIVE)
+  startDate   DateTime         @default(now())
+  endDate     DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // 关联
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+// 订阅计划枚举
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PREMIUM
+}
+
+// 订阅状态枚举
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// AI分析报告表（预留）
+model AiReport {
+  id          String   @id @default(cuid())
+  userId      String
+  profileId   String?
+  reportType  String
+  content     Json     // 分析内容（JSON格式）
+  insights    Json?    // 洞察和建议（JSON格式）
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([profileId, createdAt])
+  @@map("ai_reports")
+}
+
+// 刷新令牌表
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// 审计日志表
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }

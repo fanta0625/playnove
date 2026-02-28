@@ -153,9 +153,32 @@ Schema 详见: `backend/prisma/schema.prisma`
 
 详细 MVP 指南见: `MVP-GUIDE.md`
 
+## 🚧 正在开发
+
+### 用户系统和权限重构
+- [ ] 重命名 `children` → `member_profiles`（成员档案）
+- [ ] 实现完全自定义层级权限系统
+- [ ] 角色模板（RoleTemplate）：自定义角色名
+- [ ] 任命权传递（canDelegate）：控制是否可以继续任命下级
+- [ ] 权限检查 Guards
+
+**设计要点：**
+- `children` → `member_profiles`（更通用）
+- `RoleTemplate` 表：存储角色模板（班主任、老师、课代表等）
+- `RolePermission` 表：定义每个角色的权限
+- `RoleAppointment` 表：定义任命关系 + canDelegate（是否传递任命权）
+- `GroupMember.canDelegate`：继承自 RoleAppointment，控制该成员能否继续任命
+
+**示例场景：**
+```
+班主任 → 任命老师 → canDelegate: true ✅ 老师可继续任命
+老师 → 任命课代表 → canDelegate: true ✅ 课代表可继续任命
+课代表 → 任命学生 → canDelegate: false ❌ 学生不能任命
+```
+
 ## 待开发功能（按优先级）
 
-### Phase 6: 优化与测试（当前阶段）
+### Phase 6: 优化与测试
 - [ ] 性能优化（代码分割、图片懒加载）
 - [ ] 单元测试（核心业务逻辑）
 - [ ] 集成测试（API 端点）

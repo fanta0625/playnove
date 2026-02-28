@@ -2,6 +2,7 @@ import {
     Injectable,
     ForbiddenException,
     NotFoundException,
+    ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
@@ -14,11 +15,15 @@ import {
     CreateGroupTaskDto,
     UpdateGroupTaskDto,
 } from './dto';
+import { AppointmentsService } from '../roles/appointments.service';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class GroupsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private appointmentsService: AppointmentsService,
+    ) {}
 
     // ========== 群组管理 ==========
 
@@ -33,14 +38,60 @@ export class GroupsService {
             },
         });
 
-        // 自动将创建者添加为群组成员，并赋予完全权限
+        // 创建默认角色模板
+        const creatorRole = await this.prisma.roleTemplate.create({
+            data: {
+                name: '创建者',
+                description: '群组创建者，拥有所有权限',
+                level: 0,
+                groupId: group.id,
+                isSystem: true,
+            },
+        });
+
+        const memberRole = await this.prisma.roleTemplate.create({
+            data: {
+                name: '成员',
+                description: '普通成员',
+                level: 10,
+                groupId: group.id,
+                isSystem: true,
+            },
+        });
+
+        // 给创建者角色添加所有权限
+        const allPermissions = [
+            'MANAGE_GROUP',
+            'INVITE_MEMBERS',
+            'REMOVE_MEMBERS',
+            'APPOINT_ROLE',
+            'CREATE_ROLE',
+            'DELEGATE_APPOINTMENT',
+            'CREATE_TASKS',
+            'ASSIGN_TASKS',
+            'REVIEW_TASKS',
+            'VIEW_ALL_MEMBERS',
+            'EDIT_MEMBER_INFO',
+            'VIEW_STATS',
+            'VIEW_REPORTS',
+            'MANAGE_GAMES',
+            'VIEW_GAME_RECORDS',
+        ] as const;
+
+        await this.prisma.rolePermission.createMany({
+            data: allPermissions.map((permission) => ({
+                roleTemplateId: creatorRole.id,
+                permission,
+            })),
+        });
+
+        // 自动将创建者添加为群组成员
         await this.prisma.groupMember.create({
             data: {
                 groupId: group.id,
                 userId,
-                role: '创建者',
-                canInvite: true,
-                canAssign: true,
+                roleTemplateId: creatorRole.id,
+                canDelegate: true, // 创建者可以传递任命权
             },
         });
 
@@ -57,13 +108,20 @@ export class GroupsService {
         // 获取用户加入的群组
         const joinedGroups = await this.prisma.groupMember.findMany({
             where: { userId },
-            include: { group: true },
+            include: {
+                group: true,
+                roleTemplate: true,
+            },
             orderBy: { joinedAt: 'desc' },
         });
 
         return {
             created: createdGroups,
-            joined: joinedGroups.map(m => m.group),
+            joined: joinedGroups.map((m) => ({
+                ...m.group,
+                myRole: m.roleTemplate.name,
+                canDelegate: m.canDelegate,
+            })),
         };
     }
 
@@ -75,12 +133,13 @@ export class GroupsService {
                 members: {
                     include: {
                         user: { select: { id: true, name: true, email: true, avatar: true } },
+                        roleTemplate: true,
                     },
                     orderBy: { joinedAt: 'desc' },
                     take: 20,
                 },
                 _count: {
-                    select: { members: true, tasks: true },
+                    select: { members: true, tasks: true, roles: true },
                 },
             },
         });
@@ -145,13 +204,24 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!operator) {
             throw new ForbiddenException('你不是该群组成员');
         }
 
-        if (!operator.canAssign) {
+        const hasPermission = operator.roleTemplate.permissions.some(
+            (p) => p.permission === 'INVITE_MEMBERS',
+        );
+
+        if (!hasPermission) {
             throw new ForbiddenException('你没有权限添加成员');
         }
 
@@ -163,18 +233,104 @@ export class GroupsService {
         });
 
         if (existingMember) {
-            throw new ForbiddenException('该用户已是群组成员');
+            throw new ConflictException('该用户已是群组成员');
+        }
+
+        // 获取默认角色
+        const defaultRole = await this.prisma.roleTemplate.findFirst({
+            where: {
+                groupId,
+                name: '成员',
+            },
+        });
+
+        if (!defaultRole) {
+            throw new NotFoundException('默认角色不存在');
         }
 
         return this.prisma.groupMember.create({
             data: {
                 groupId,
                 userId: addGroupMemberDto.userId,
-                role: addGroupMemberDto.role,
-                canInvite: addGroupMemberDto.canInvite || false,
-                canAssign: addGroupMemberDto.canAssign || false,
+                roleTemplateId: addGroupMemberDto.roleTemplateId || defaultRole.id,
+                canDelegate: false, // 新成员默认不能任命
+            },
+            include: {
+                roleTemplate: true,
             },
         });
+    }
+
+    /**
+     * ⭐ 任命成员为某个角色（使用新的任命系统）
+     */
+    async appointMember(
+        groupId: string,
+        appointerMemberId: string, // 任命者成员ID
+        targetUserId: string, // 被任命用户ID
+        roleTemplateId: string, // 目标角色
+    ) {
+        // 获取任命者信息
+        const appointer = await this.prisma.groupMember.findUnique({
+            where: { id: appointerMemberId },
+            include: {
+                roleTemplate: true,
+            },
+        });
+
+        if (!appointer || appointer.groupId !== groupId) {
+            throw new ForbiddenException('任命者不存在或不在此群组');
+        }
+
+        // 检查是否有任命权限
+        const { canAppoint, canDelegate } = await this.appointmentsService.canAppoint(
+            appointerMemberId,
+            roleTemplateId,
+        );
+
+        if (!canAppoint) {
+            throw new ForbiddenException('你无权任命此角色');
+        }
+
+        // 检查目标用户是否已是成员
+        const existingMember = await this.prisma.groupMember.findUnique({
+            where: {
+                groupId_userId: { groupId, userId: targetUserId },
+            },
+        });
+
+        if (existingMember) {
+            // 更新现有成员角色
+            return this.prisma.groupMember.update({
+                where: { id: existingMember.id },
+                data: {
+                    roleTemplateId,
+                    canDelegate, // ⭐ 从任命关系继承 canDelegate
+                },
+                include: {
+                    roleTemplate: true,
+                    user: {
+                        select: { id: true, name: true, email: true, avatar: true },
+                    },
+                },
+            });
+        } else {
+            // 创建新成员
+            return this.prisma.groupMember.create({
+                data: {
+                    groupId,
+                    userId: targetUserId,
+                    roleTemplateId,
+                    canDelegate, // ⭐ 从任命关系继承 canDelegate
+                },
+                include: {
+                    roleTemplate: true,
+                    user: {
+                        select: { id: true, name: true, email: true, avatar: true },
+                    },
+                },
+            });
+        }
     }
 
     async updateMemberRole(
@@ -188,13 +344,24 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!operator) {
             throw new ForbiddenException('你不是该群组成员');
         }
 
-        if (!operator.canAssign) {
+        const hasPermission = operator.roleTemplate.permissions.some(
+            (p) => p.permission === 'APPOINT_ROLE',
+        );
+
+        if (!hasPermission) {
             throw new ForbiddenException('你没有权限修改成员角色');
         }
 
@@ -210,9 +377,21 @@ export class GroupsService {
             throw new NotFoundException('成员不在此群组');
         }
 
+        // 检查是否可以任命该角色
+        const { canDelegate } = await this.appointmentsService.canAppoint(
+            operator.id,
+            updateGroupMemberDto.roleTemplateId,
+        );
+
         return this.prisma.groupMember.update({
             where: { id: memberId },
-            data: updateGroupMemberDto,
+            data: {
+                roleTemplateId: updateGroupMemberDto.roleTemplateId,
+                canDelegate, // ⭐ 从任命关系更新 canDelegate
+            },
+            include: {
+                roleTemplate: true,
+            },
         });
     }
 
@@ -226,13 +405,24 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!operator) {
             throw new ForbiddenException('你不是该群组成员');
         }
 
-        if (!operator.canAssign) {
+        const hasPermission = operator.roleTemplate.permissions.some(
+            (p) => p.permission === 'REMOVE_MEMBERS',
+        );
+
+        if (!hasPermission) {
             throw new ForbiddenException('你没有权限移除成员');
         }
 
@@ -285,18 +475,37 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!operator) {
             throw new ForbiddenException('你不是该群组成员');
         }
 
-        if (!operator.canInvite) {
+        const hasPermission = operator.roleTemplate.permissions.some(
+            (p) => p.permission === 'INVITE_MEMBERS',
+        );
+
+        if (!hasPermission) {
             throw new ForbiddenException('你没有权限创建邀请码');
         }
 
         // 生成唯一邀请码
         const code = this.generateInvitationCode();
+
+        // 获取默认角色
+        const defaultRole = await this.prisma.roleTemplate.findFirst({
+            where: {
+                groupId,
+                name: createGroupInvitationDto.defaultRole || '成员',
+            },
+        });
 
         return this.prisma.groupInvitation.create({
             data: {
@@ -307,7 +516,7 @@ export class GroupsService {
                 expiresAt: createGroupInvitationDto.expiresAt
                     ? new Date(createGroupInvitationDto.expiresAt)
                     : null,
-                defaultRole: createGroupInvitationDto.defaultRole || '成员',
+                defaultRole: defaultRole?.name || '成员',
             },
         });
     }
@@ -356,13 +565,24 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId: invitation.groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!operator) {
             throw new ForbiddenException('你不是该群组成员');
         }
 
-        if (!operator.canInvite) {
+        const hasPermission = operator.roleTemplate.permissions.some(
+            (p) => p.permission === 'INVITE_MEMBERS',
+        );
+
+        if (!hasPermission) {
             throw new ForbiddenException('你没有权限管理邀请码');
         }
 
@@ -386,13 +606,24 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId: invitation.groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!operator) {
             throw new ForbiddenException('你不是该群组成员');
         }
 
-        if (!operator.canInvite) {
+        const hasPermission = operator.roleTemplate.permissions.some(
+            (p) => p.permission === 'INVITE_MEMBERS',
+        );
+
+        if (!hasPermission) {
             throw new ForbiddenException('你没有权限删除邀请码');
         }
 
@@ -433,7 +664,19 @@ export class GroupsService {
         });
 
         if (existingMember) {
-            throw new ForbiddenException('你已经是该群组成员了');
+            throw new ConflictException('你已经是该群组成员了');
+        }
+
+        // 根据邀请码的 defaultRole 找到对应的 roleTemplate
+        const roleTemplate = await this.prisma.roleTemplate.findFirst({
+            where: {
+                groupId: invitation.groupId,
+                name: invitation.defaultRole || '成员',
+            },
+        });
+
+        if (!roleTemplate) {
+            throw new NotFoundException('默认角色不存在');
         }
 
         // 创建成员记录
@@ -441,9 +684,8 @@ export class GroupsService {
             data: {
                 groupId: invitation.groupId,
                 userId,
-                role: invitation.defaultRole || '成员',
-                canInvite: false,
-                canAssign: false,
+                roleTemplateId: roleTemplate.id,
+                canDelegate: false, // 通过邀请码加入的成员默认不能任命
             },
         });
 
@@ -462,7 +704,7 @@ export class GroupsService {
         return {
             message: '成功加入群组',
             groupName: group?.name || '未知群组',
-            role: invitation.defaultRole || '成员',
+            roleName: invitation.defaultRole || '成员',
         };
     }
 
@@ -486,10 +728,25 @@ export class GroupsService {
             where: {
                 groupId_userId: { groupId, userId },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
         if (!member) {
             throw new ForbiddenException('你不是该群组成员');
+        }
+
+        const hasPermission = member.roleTemplate.permissions.some(
+            (p) => p.permission === 'CREATE_TASKS',
+        );
+
+        if (!hasPermission) {
+            throw new ForbiddenException('你没有权限创建任务');
         }
 
         return this.prisma.groupTask.create({
@@ -622,7 +879,7 @@ export class GroupsService {
             select: { groupId: true },
         });
 
-        const groupIds = memberships.map(m => m.groupId);
+        const groupIds = memberships.map((m) => m.groupId);
 
         // 获取这些群组的任务
         const tasks = await this.prisma.groupTask.findMany({
@@ -640,7 +897,7 @@ export class GroupsService {
             },
         });
 
-        return tasks.map(task => ({
+        return tasks.map((task) => ({
             ...task,
             isSubmitted: task.submissions.length > 0,
             submission: task.submissions[0] || null,

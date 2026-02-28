@@ -114,7 +114,7 @@ export class GroupAdminGuard implements CanActivate {
             return true;
         }
 
-        // 检查用户是否是管理员
+        // 检查用户是否有管理权限（通过角色权限）
         const member = await this.prisma.groupMember.findUnique({
             where: {
                 groupId_userId: {
@@ -122,9 +122,25 @@ export class GroupAdminGuard implements CanActivate {
                     userId: user.id,
                 },
             },
+            include: {
+                roleTemplate: {
+                    include: {
+                        permissions: true,
+                    },
+                },
+            },
         });
 
-        if (!member || !member.canAssign) {
+        if (!member) {
+            throw new ForbiddenException('You are not a member of this group');
+        }
+
+        // 检查是否有管理权限
+        const hasManagePermission = member.roleTemplate.permissions.some(
+            (p) => p.permission === 'MANAGE_GROUP' || p.permission === 'APPOINT_ROLE'
+        );
+
+        if (!hasManagePermission) {
             throw new ForbiddenException('Insufficient permissions');
         }
 

@@ -8,7 +8,18 @@
       "Bash(npm install)",
       "Bash(npm run build)",
       "Bash(npm install --save-dev @types/inquirer)",
-      "Bash(git branch -M main)"
+      "Bash(git branch -M main)",
+      "Bash(git config user.email \"84568434+fanta0625@users.noreply.github.com\")",
+      "Bash(git config user.name \"fanta0625\")",
+      "Bash(git config user.name)",
+      "Bash(git config user.email)",
+      "Bash(git config --global user.email \"84568434+fanta0625@users.noreply.github.com\")",
+      "Bash(git config --global user.name \"fanta0625\")",
+      "Bash(git config --global user.name)",
+      "Bash(git config --global user.email)",
+      "Read(//home/wangxin/**)",
+      "Bash(bash -n /home/wangxin/projects/playnove/start.sh)",
+      "Bash(chmod +x /home/wangxin/projects/playnove/start.sh)"
     ],
     "additionalDirectories": [
       "/home/wangxin/projects/ai-context-kit"

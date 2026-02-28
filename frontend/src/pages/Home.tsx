@@ -1,6 +1,17 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/store';
+import { useEffect } from 'react';
 
 function Home() {
+    const navigate = useNavigate();
+    const { isAuthenticated, user } = useAuthStore();
+
+    // 如果已登录，自动跳转到仪表板
+    useEffect(() => {
+        if (isAuthenticated) {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [isAuthenticated, navigate]);
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
             <div className="container mx-auto px-4 py-6 sm:py-8">
@@ -35,10 +46,10 @@ function Home() {
                             在这里，孩子们可以通过有趣的游戏学习知识，探索世界，快乐成长！
                         </p>
                         <Link
-                            to="/register"
+                            to={isAuthenticated ? "/dashboard" : "/register"}
                             className="inline-block bg-primary-500 hover:bg-primary-600 text-white font-semibold py-3 px-6 sm:px-8 rounded-full transition-colors text-base sm:text-lg w-full sm:w-auto"
                         >
-                            开始游戏
+                            {isAuthenticated ? "进入游戏" : "开始游戏"}
                         </Link>
                     </div>
                 </section>

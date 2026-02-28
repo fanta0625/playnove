@@ -59,29 +59,13 @@ export class AddGroupMemberDto {
     userId: string;
 
     @IsString()
-    role: string;
-
-    @IsOptional()
-    @IsBoolean()
-    canInvite?: boolean;
-
-    @IsOptional()
-    @IsBoolean()
-    canAssign?: boolean;
+    roleTemplateId: string;
 }
 
 export class UpdateGroupMemberDto {
     @IsOptional()
     @IsString()
-    role?: string;
-
-    @IsOptional()
-    @IsBoolean()
-    canInvite?: boolean;
-
-    @IsOptional()
-    @IsBoolean()
-    canAssign?: boolean;
+    roleTemplateId?: string;
 }
 
 export class CreateGroupTaskDto {

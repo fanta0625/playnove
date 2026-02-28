@@ -45,7 +45,7 @@ export default function Login() {
                 refreshToken: '', // refreshToken在Cookie中，不需要这里传递
             });
 
-            navigate('/');
+            navigate('/dashboard');
         } catch (err: any) {
             setError(err.response?.data?.message || '登录失败，请检查邮箱和密码');
         } finally {

@@ -28,7 +28,7 @@ export class UsersService {
                 avatar: true,
                 emailVerified: true,
                 createdAt: true,
-                children: true,
+                memberProfiles: true,
             },
         });
 
@@ -72,7 +72,7 @@ export class UsersService {
     }
 
     async addChild(userId: string, childData: any) {
-        return this.prisma.child.create({
+        return this.prisma.memberProfile.create({
             data: {
                 ...childData,
                 parentId: userId,
@@ -91,7 +91,7 @@ export class UsersService {
             throw new NotFoundException('User not found');
         }
 
-        return this.prisma.child.findMany({
+        return this.prisma.memberProfile.findMany({
             where: { parentId: userId },
             orderBy: { createdAt: 'desc' },
         });
@@ -99,7 +99,7 @@ export class UsersService {
 
     async getChildById(userId: string, childId: string) {
         // 验证用户是否有权限查看此child账户
-        const child = await this.prisma.child.findUnique({
+        const child = await this.prisma.memberProfile.findUnique({
             where: { id: childId },
         });
 
@@ -116,7 +116,7 @@ export class UsersService {
 
     async updateChild(userId: string, childId: string, updateData: any) {
         // 验证用户是否有权限更新此child账户
-        const child = await this.prisma.child.findUnique({
+        const child = await this.prisma.memberProfile.findUnique({
             where: { id: childId },
         });
 
@@ -128,7 +128,7 @@ export class UsersService {
             throw new NotFoundException('Child not found');
         }
 
-        return this.prisma.child.update({
+        return this.prisma.memberProfile.update({
             where: { id: childId },
             data: updateData,
         });
@@ -136,7 +136,7 @@ export class UsersService {
 
     async deleteChild(userId: string, childId: string) {
         // 验证用户是否有权限删除此child账户
-        const child = await this.prisma.child.findUnique({
+        const child = await this.prisma.memberProfile.findUnique({
             where: { id: childId },
         });
 
@@ -148,7 +148,7 @@ export class UsersService {
             throw new NotFoundException('Child not found');
         }
 
-        return this.prisma.child.delete({
+        return this.prisma.memberProfile.delete({
             where: { id: childId },
         });
     }
